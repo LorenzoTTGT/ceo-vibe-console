@@ -1,0 +1,36 @@
+# Sandbox Dev Server - Runs guiido-carsharing in dev mode
+FROM node:20-alpine
+
+# Install dependencies
+RUN apk add --no-cache git bash curl openssh-client
+
+# Install pnpm (guiido uses npm but good to have both)
+RUN npm install -g pnpm
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Clone the repo (will be overwritten by volume mount in production)
+# This is just for building the image with deps pre-installed
+ARG GITHUB_REPO=https://github.com/your-org/guiido-carsharing.git
+RUN git clone --depth 1 ${GITHUB_REPO} guiido-carsharing || mkdir -p guiido-carsharing
+
+WORKDIR /workspace/guiido-carsharing
+
+# Install dependencies (will use cached layers if package.json unchanged)
+COPY package*.json ./
+RUN npm install || true
+
+# Expose dev server port
+EXPOSE 3001
+
+# Set environment variables for dev
+ENV NODE_ENV=development
+ENV PORT=3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
+  CMD curl -f http://localhost:3001/ || exit 1
+
+# Start dev server
+CMD ["npm", "run", "dev", "--", "-p", "3001", "-H", "0.0.0.0"]
