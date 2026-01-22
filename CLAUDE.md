@@ -1,6 +1,6 @@
-# CEO Vibe Console
+# Vibe Console
 
-A constrained vibe-coding platform for the Guiido CEO to tweak UI using AI assistance.
+A constrained vibe-coding platform to tweak UI using AI assistance.
 
 ## Quick Start
 
@@ -19,17 +19,18 @@ npm run lint         # ESLint
 - **Styling**: Tailwind CSS
 
 ### Sandbox (separate container)
-- Runs `guiido-carsharing` in dev mode
+- Runs selected repo in dev mode
 - Hot reload enabled for instant preview
 - Isolated from production
 
 ## Key Features
 
-1. **GitHub OAuth Login** - CEO signs in with their GitHub account
-2. **OpenAI Codex Integration** - AI processes UI change requests
-3. **Live Preview** - iframe shows the running dev server with HMR
-4. **PR Workflow** - Creates PRs to `_ceo_preview` branch only
-5. **Branch Protection** - CEO cannot push to `main`
+1. **GitHub OAuth Login** - User signs in with their GitHub account
+2. **Repo Selector** - User picks which repo to work on (any repo they have push access to)
+3. **OpenAI Codex Integration** - AI processes UI change requests
+4. **Live Preview** - iframe shows the running dev server with HMR
+5. **PR Workflow** - Auto-creates branches like `vibe/2024-01-22-1430-fix-button` and PRs
+6. **Branch Protection** - App never pushes to main/master/production directly
 
 ## Environment Variables
 
@@ -37,15 +38,16 @@ See `.env.example` for required variables.
 
 ## Deployment (Coolify)
 
-1. Deploy this repo as "ceo-console" application
-2. Set up the sandbox container with guiido-carsharing
+1. Deploy this repo as "vibe-console" application
+2. Set up the sandbox container with workspace volume
 3. Configure domains:
    - `ceo.guiido.com` → console
    - `ceo-preview.guiido.com` → sandbox dev server
 
 ## Security Model
 
-- CEO can only push to `ceo/*` branches
-- PRs target `_ceo_preview` branch only
-- You (Lorenzo) review and merge
-- Codex only modifies files in: `src/app/`, `src/components/`, `src/lib/`, `public/`
+- App never pushes directly to protected branches (main, master, production, prod, release)
+- All changes go through auto-named branches: `vibe/<date>-<time>-<slug>`
+- PRs target the repo's default branch
+- Repo owner sets branch protection rules on GitHub (require PR reviews, etc.)
+- `ALLOWED_EMAILS` env var restricts who can log in

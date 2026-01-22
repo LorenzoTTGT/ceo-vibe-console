@@ -9,11 +9,15 @@ type ViewportSize = "desktop" | "tablet" | "mobile";
 interface PreviewPanelProps {
   previewUrl: string;
   isLoading?: boolean;
+  refreshKey?: number;
 }
 
-export function PreviewPanel({ previewUrl, isLoading }: PreviewPanelProps) {
+export function PreviewPanel({ previewUrl, isLoading, refreshKey = 0 }: PreviewPanelProps) {
   const [viewport, setViewport] = useState<ViewportSize>("desktop");
-  const [key, setKey] = useState(0);
+  const [localKey, setLocalKey] = useState(0);
+
+  // Combine external refresh key with local key for iframe refresh
+  const iframeKey = refreshKey + localKey;
 
   const viewportSizes = {
     desktop: "w-full",
@@ -22,7 +26,7 @@ export function PreviewPanel({ previewUrl, isLoading }: PreviewPanelProps) {
   };
 
   const handleRefresh = () => {
-    setKey((prev) => prev + 1);
+    setLocalKey((prev) => prev + 1);
   };
 
   const handleOpenExternal = () => {
@@ -116,7 +120,7 @@ export function PreviewPanel({ previewUrl, isLoading }: PreviewPanelProps) {
             </div>
           ) : (
             <iframe
-              key={key}
+              key={iframeKey}
               src={previewUrl}
               className="w-full h-full border-0"
               title="Preview"

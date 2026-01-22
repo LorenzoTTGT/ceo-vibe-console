@@ -1,19 +1,50 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, XCircle, Loader2, Terminal } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Terminal, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Available Codex models - Complete list
+const CODEX_MODELS = [
+  // Recommended
+  { id: "gpt-5.2-codex", name: "GPT-5.2 Codex", description: "Most advanced", category: "recommended" },
+  { id: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini", description: "Fast & cost-effective", category: "recommended" },
+  // Alternative - GPT-5.x family
+  { id: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max", description: "Long-horizon tasks", category: "alternative" },
+  { id: "gpt-5.2", name: "GPT-5.2", description: "General agentic", category: "alternative" },
+  { id: "gpt-5.1", name: "GPT-5.1", description: "Coding & agentic", category: "alternative" },
+  { id: "gpt-5.1-codex", name: "GPT-5.1 Codex", description: "Agentic coding", category: "alternative" },
+  { id: "gpt-5-codex", name: "GPT-5 Codex", description: "Long-running tasks", category: "alternative" },
+  { id: "gpt-5-codex-mini", name: "GPT-5 Codex Mini", description: "Cost-effective", category: "alternative" },
+  { id: "gpt-5", name: "GPT-5", description: "Reasoning model", category: "alternative" },
+  // Original Codex models (o-series based)
+  { id: "codex-1", name: "Codex-1", description: "Based on o3", category: "original" },
+  { id: "codex-mini-latest", name: "Codex Mini", description: "Based on o4-mini", category: "original" },
+  // Raw reasoning models
+  { id: "o3", name: "o3", description: "Reasoning model", category: "reasoning" },
+  { id: "o4-mini", name: "o4-mini", description: "Fast reasoning", category: "reasoning" },
+];
 
 interface CodexStatusProps {
   onStatusChange: (isReady: boolean) => void;
+  onModelChange?: (model: string) => void;
+  selectedModel?: string;
 }
 
-export function CodexStatus({ onStatusChange }: CodexStatusProps) {
+export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: CodexStatusProps) {
   const [status, setStatus] = useState<"checking" | "ready" | "not-installed" | "not-authenticated">("checking");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [model, setModel] = useState(selectedModel || "gpt-5.2-codex");
 
   useEffect(() => {
     checkCodexStatus();
+    // Load saved model preference
+    const savedModel = localStorage.getItem("codex-model");
+    if (savedModel) {
+      setModel(savedModel);
+      onModelChange?.(savedModel);
+    }
   }, []);
 
   const checkCodexStatus = async () => {
@@ -72,8 +103,18 @@ export function CodexStatus({ onStatusChange }: CodexStatusProps) {
     }
   };
 
+  const handleModelSelect = (modelId: string) => {
+    setModel(modelId);
+    localStorage.setItem("codex-model", modelId);
+    onModelChange?.(modelId);
+    setIsModelDropdownOpen(false);
+  };
+
+  const currentModel = CODEX_MODELS.find((m) => m.id === model) || CODEX_MODELS[1];
+
   return (
-    <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+    <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700 space-y-3">
+      {/* Status row */}
       <div className="flex items-center gap-3">
         <Terminal className="w-5 h-5 text-emerald-500" />
         <div className="flex-1">
@@ -100,7 +141,7 @@ export function CodexStatus({ onStatusChange }: CodexStatusProps) {
             {status === "not-authenticated" && (
               <>
                 <XCircle className="w-3 h-3 text-yellow-500" />
-                <span className="text-xs text-yellow-400">Not authenticated</span>
+                <span className="text-xs text-yellow-400">OpenAI login required</span>
               </>
             )}
           </div>
@@ -117,7 +158,7 @@ export function CodexStatus({ onStatusChange }: CodexStatusProps) {
                 : "bg-emerald-600 hover:bg-emerald-500 text-white"
             )}
           >
-            {isAuthenticating ? "Waiting..." : "Sign in"}
+            {isAuthenticating ? "Waiting..." : "Login to OpenAI"}
           </button>
         )}
 
@@ -127,6 +168,102 @@ export function CodexStatus({ onStatusChange }: CodexStatusProps) {
           </div>
         )}
       </div>
+
+      {/* Model selector - only show when connected */}
+      {status === "ready" && (
+        <div className="relative">
+          <label className="text-xs text-gray-500 mb-1 block">Model</label>
+          <button
+            onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white hover:border-gray-600 transition-colors"
+          >
+            <span>{currentModel.name}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">{currentModel.description}</span>
+              <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform", isModelDropdownOpen && "rotate-180")} />
+            </div>
+          </button>
+
+          {isModelDropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setIsModelDropdownOpen(false)} />
+              <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden max-h-80 overflow-y-auto">
+                {/* Recommended */}
+                <div className="px-3 py-1.5 text-xs font-medium text-emerald-400 bg-gray-900/50 sticky top-0">
+                  Recommended
+                </div>
+                {CODEX_MODELS.filter((m) => m.category === "recommended").map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleModelSelect(m.id)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-700/50 transition-colors",
+                      model === m.id && "bg-emerald-500/10"
+                    )}
+                  >
+                    <span className="text-sm text-white">{m.name}</span>
+                    <span className="text-xs text-gray-500">{m.description}</span>
+                  </button>
+                ))}
+
+                {/* Alternative */}
+                <div className="px-3 py-1.5 text-xs font-medium text-blue-400 bg-gray-900/50 sticky top-0">
+                  GPT-5 Family
+                </div>
+                {CODEX_MODELS.filter((m) => m.category === "alternative").map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleModelSelect(m.id)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-700/50 transition-colors",
+                      model === m.id && "bg-emerald-500/10"
+                    )}
+                  >
+                    <span className="text-sm text-white">{m.name}</span>
+                    <span className="text-xs text-gray-500">{m.description}</span>
+                  </button>
+                ))}
+
+                {/* Original Codex */}
+                <div className="px-3 py-1.5 text-xs font-medium text-purple-400 bg-gray-900/50 sticky top-0">
+                  Original Codex
+                </div>
+                {CODEX_MODELS.filter((m) => m.category === "original").map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleModelSelect(m.id)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-700/50 transition-colors",
+                      model === m.id && "bg-emerald-500/10"
+                    )}
+                  >
+                    <span className="text-sm text-white">{m.name}</span>
+                    <span className="text-xs text-gray-500">{m.description}</span>
+                  </button>
+                ))}
+
+                {/* Reasoning Models */}
+                <div className="px-3 py-1.5 text-xs font-medium text-orange-400 bg-gray-900/50 sticky top-0">
+                  Reasoning Models
+                </div>
+                {CODEX_MODELS.filter((m) => m.category === "reasoning").map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleModelSelect(m.id)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-700/50 transition-colors",
+                      model === m.id && "bg-emerald-500/10"
+                    )}
+                  >
+                    <span className="text-sm text-white">{m.name}</span>
+                    <span className="text-xs text-gray-500">{m.description}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

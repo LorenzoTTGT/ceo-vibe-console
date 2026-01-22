@@ -6,18 +6,24 @@ import path from "path";
 
 const execAsync = promisify(exec);
 
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "/workspace/guiido-carsharing";
+const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 
 export async function POST(request: NextRequest) {
   try {
-    const { patch } = await request.json();
+    const { patch, repo } = await request.json();
 
     if (!patch) {
       return NextResponse.json({ error: "Patch is required" }, { status: 400 });
     }
 
+    if (!repo) {
+      return NextResponse.json({ error: "Repository is required" }, { status: 400 });
+    }
+
+    const repoPath = `${WORKSPACE_PATH}/${repo}`;
+
     // Save patch to temp file
-    const tempDir = "/tmp/ceo-patches";
+    const tempDir = "/tmp/vibe-patches";
     await mkdir(tempDir, { recursive: true });
     const patchFile = path.join(tempDir, `patch-${Date.now()}.patch`);
     await writeFile(patchFile, patch);
@@ -25,7 +31,7 @@ export async function POST(request: NextRequest) {
     // Apply the patch
     try {
       const { stdout, stderr } = await execAsync(
-        `cd ${WORKSPACE_PATH} && git apply --check ${patchFile} && git apply ${patchFile}`,
+        `cd ${repoPath} && git apply --check ${patchFile} && git apply ${patchFile}`,
         { timeout: 30000 }
       );
 
@@ -38,7 +44,7 @@ export async function POST(request: NextRequest) {
       // Try with --3way for better conflict handling
       try {
         const { stdout, stderr } = await execAsync(
-          `cd ${WORKSPACE_PATH} && git apply --3way ${patchFile}`,
+          `cd ${repoPath} && git apply --3way ${patchFile}`,
           { timeout: 30000 }
         );
 

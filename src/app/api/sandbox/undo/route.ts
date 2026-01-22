@@ -1,16 +1,24 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "/workspace/guiido-carsharing";
+const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    const { repo } = await request.json();
+
+    if (!repo) {
+      return NextResponse.json({ error: "Repository is required" }, { status: 400 });
+    }
+
+    const repoPath = `${WORKSPACE_PATH}/${repo}`;
+
     // Undo the last uncommitted changes (restore from git)
     const { stdout, stderr } = await execAsync(
-      `cd ${WORKSPACE_PATH} && git checkout -- .`,
+      `cd ${repoPath} && git checkout -- .`,
       { timeout: 30000 }
     );
 

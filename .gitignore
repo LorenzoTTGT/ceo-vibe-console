@@ -41,6 +41,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Local data (database, cloned repos)
+/data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

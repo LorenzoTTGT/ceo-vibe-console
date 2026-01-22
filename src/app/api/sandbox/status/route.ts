@@ -1,22 +1,35 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "/workspace/guiido-carsharing";
+const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const repo = searchParams.get("repo");
+
+    if (!repo) {
+      return NextResponse.json({
+        branch: null,
+        hasChanges: false,
+        changedFiles: [],
+      });
+    }
+
+    const repoPath = `${WORKSPACE_PATH}/${repo}`;
+
     // Get git status
     const { stdout: statusOutput } = await execAsync(
-      `cd ${WORKSPACE_PATH} && git status --porcelain`,
+      `cd ${repoPath} && git status --porcelain`,
       { timeout: 10000 }
     );
 
     // Get current branch
     const { stdout: branchOutput } = await execAsync(
-      `cd ${WORKSPACE_PATH} && git branch --show-current`,
+      `cd ${repoPath} && git branch --show-current`,
       { timeout: 10000 }
     );
 
@@ -38,6 +51,9 @@ export async function GET() {
   } catch (error) {
     console.error("Status error:", error);
     return NextResponse.json({
+      branch: null,
+      hasChanges: false,
+      changedFiles: [],
       error: error instanceof Error ? error.message : "Failed to get status",
     });
   }

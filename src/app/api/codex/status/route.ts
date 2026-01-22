@@ -15,20 +15,17 @@ export async function GET() {
 
     // Check if codex is authenticated
     try {
-      const { stdout } = await execAsync("codex --version");
-      // Try a simple auth check - this may vary based on codex CLI behavior
-      // For now, we assume if codex is installed and can run, we need to check auth separately
+      const { stdout: version } = await execAsync("codex --version");
 
-      // Check for auth config file or try a simple authenticated request
-      const authCheck = await execAsync("codex auth status 2>&1 || echo 'not-auth'");
-      const isAuthenticated = !authCheck.stdout.includes("not-auth") &&
-                             !authCheck.stdout.includes("not authenticated") &&
-                             !authCheck.stdout.includes("please login");
+      // Check login status with the correct command
+      const { stdout: loginStatus } = await execAsync("codex login status 2>&1");
+      const isAuthenticated = loginStatus.toLowerCase().includes("logged in");
 
       return NextResponse.json({
         installed: true,
         authenticated: isAuthenticated,
-        version: stdout.trim(),
+        version: version.trim(),
+        status: loginStatus.trim(),
       });
     } catch {
       return NextResponse.json({ installed: true, authenticated: false });
