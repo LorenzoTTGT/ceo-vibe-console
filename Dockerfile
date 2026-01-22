@@ -35,6 +35,9 @@ RUN adduser --system --uid 1001 nextjs
 RUN apk add --no-cache git bash curl
 RUN npm install -g @openai/codex
 
+# Create data directory for SQLite and workspace
+RUN mkdir -p /data/workspace && chown -R nextjs:nodejs /data
+
 COPY --from=builder /app/public ./public
 
 # Set the correct permission for prerender cache
