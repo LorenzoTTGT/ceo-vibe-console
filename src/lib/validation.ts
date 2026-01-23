@@ -29,10 +29,18 @@ export function validateCommitSha(sha: string): boolean {
 /** Whitelist of allowed Codex models */
 const ALLOWED_MODELS = [
   "gpt-5.2-codex",
-  "gpt-4.1-codex",
-  "o4-mini",
-  "o3",
+  "gpt-5.1-codex-mini",
+  "gpt-5.1-codex-max",
+  "gpt-5.2",
+  "gpt-5.1",
+  "gpt-5.1-codex",
+  "gpt-5-codex",
+  "gpt-5-codex-mini",
+  "gpt-5",
+  "codex-1",
   "codex-mini-latest",
+  "o3",
+  "o4-mini",
 ];
 
 export function validateModel(model: string): boolean {

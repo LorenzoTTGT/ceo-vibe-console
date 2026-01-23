@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { CheckCircle, XCircle, Loader2, Terminal, ChevronDown } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { CheckCircle, XCircle, Loader2, Terminal, ChevronDown, Copy, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Available Codex models - Complete list
@@ -34,6 +34,10 @@ interface CodexStatusProps {
 export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: CodexStatusProps) {
   const [status, setStatus] = useState<"checking" | "ready" | "not-installed" | "not-authenticated">("checking");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [deviceAuthUrl, setDeviceAuthUrl] = useState<string | null>(null);
+  const [deviceCode, setDeviceCode] = useState<string | null>(null);
+  const [rawAuthOutput, setRawAuthOutput] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [model, setModel] = useState(selectedModel || "gpt-5.2-codex");
 
@@ -69,37 +73,64 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
     }
   };
 
+  const clearDeviceAuth = useCallback(() => {
+    setDeviceAuthUrl(null);
+    setDeviceCode(null);
+    setRawAuthOutput(null);
+    setCodeCopied(false);
+  }, []);
+
   const handleAuthenticate = async () => {
     setIsAuthenticating(true);
+    clearDeviceAuth();
     try {
       const response = await fetch("/api/codex/auth", { method: "POST" });
       const data = await response.json();
 
       if (data.authUrl) {
-        // Open auth URL in new window
-        window.open(data.authUrl, "_blank", "width=600,height=700");
+        setDeviceAuthUrl(data.authUrl);
+        setDeviceCode(data.deviceCode || null);
+      } else if (data.rawOutput) {
+        setRawAuthOutput(data.rawOutput);
+      }
 
+      if (data.authStarted) {
         // Poll for auth completion
         const pollInterval = setInterval(async () => {
-          const statusRes = await fetch("/api/codex/status");
-          const statusData = await statusRes.json();
-          if (statusData.authenticated) {
-            clearInterval(pollInterval);
-            setStatus("ready");
-            onStatusChange(true);
-            setIsAuthenticating(false);
+          try {
+            const statusRes = await fetch("/api/codex/status");
+            const statusData = await statusRes.json();
+            if (statusData.authenticated) {
+              clearInterval(pollInterval);
+              setStatus("ready");
+              onStatusChange(true);
+              setIsAuthenticating(false);
+              clearDeviceAuth();
+            }
+          } catch {
+            // Ignore polling errors
           }
-        }, 2000);
+        }, 3000);
 
         // Stop polling after 5 minutes
         setTimeout(() => {
           clearInterval(pollInterval);
           setIsAuthenticating(false);
         }, 300000);
+      } else {
+        setIsAuthenticating(false);
       }
     } catch (error) {
       console.error("Auth error:", error);
       setIsAuthenticating(false);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (deviceCode) {
+      await navigator.clipboard.writeText(deviceCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
     }
   };
 
@@ -168,6 +199,45 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
           </div>
         )}
       </div>
+
+      {/* Device auth UI */}
+      {isAuthenticating && deviceAuthUrl && (
+        <div className="p-3 bg-gray-900 rounded-lg border border-emerald-700/50 space-y-2">
+          <p className="text-xs text-gray-300">Open this link and enter the code:</p>
+          <a
+            href={deviceAuthUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-emerald-400 hover:text-emerald-300 underline break-all"
+          >
+            {deviceAuthUrl}
+            <ExternalLink className="w-3 h-3 flex-shrink-0" />
+          </a>
+          {deviceCode && (
+            <div className="flex items-center gap-2 mt-2">
+              <code className="text-lg font-bold font-mono text-white bg-gray-800 px-3 py-1 rounded tracking-wider">
+                {deviceCode}
+              </code>
+              <button
+                onClick={handleCopyCode}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                {codeCopied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-gray-500 mt-1">Waiting for authentication...</p>
+        </div>
+      )}
+
+      {/* Raw output fallback when no URL could be parsed */}
+      {isAuthenticating && !deviceAuthUrl && rawAuthOutput && (
+        <div className="p-3 bg-gray-900 rounded-lg border border-yellow-700/50">
+          <p className="text-xs text-gray-300 mb-1">Follow these instructions:</p>
+          <pre className="text-xs text-yellow-300 whitespace-pre-wrap font-mono">{rawAuthOutput}</pre>
+        </div>
+      )}
 
       {/* Model selector - only show when connected */}
       {status === "ready" && (
