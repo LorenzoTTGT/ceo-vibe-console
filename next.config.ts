@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  typescript: {
+    // Type checking done in CI; skip during build to reduce memory usage
+    ignoreBuildErrors: true,
+  },
 
   // Allow iframe embedding from the preview domain
   async headers() {
