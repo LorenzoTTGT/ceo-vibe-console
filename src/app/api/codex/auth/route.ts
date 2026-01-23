@@ -66,19 +66,23 @@ export async function POST() {
       });
     }
 
-    // Strip ANSI escape codes before parsing
+    // Extract device code from ANSI-colored output BEFORE stripping
+    // The code is the second value wrapped in \x1b[94m...\x1b[0m (first is the URL)
+    const ansiHighlighted = [...result.stdout.matchAll(/\x1b\[94m([^\x1b]+)\x1b\[0m/g)].map(m => m[1].trim());
+    const deviceCode = ansiHighlighted.find(s => /^[A-Z0-9]{4,}-[A-Z0-9]{4,}$/i.test(s)) || null;
+
+    // Strip ANSI escape codes for URL parsing
     const clean = result.stdout.replace(/\x1b\[[0-9;]*m/g, "");
 
-    // Parse URL and device code from cleaned output
+    // Parse URL from cleaned output
     const urlMatch = clean.match(/https?:\/\/\S+/);
-    const codeMatch = clean.match(/\b([A-Z0-9]{3,}-[A-Z0-9]{3,})\b/i);
 
     if (urlMatch) {
       return NextResponse.json({
         authUrl: urlMatch[0].replace(/[.,;:]+$/, ""), // trim trailing punctuation
-        deviceCode: codeMatch ? codeMatch[1] : null,
+        deviceCode,
         authStarted: true,
-        rawOutput: result.stdout,
+        rawOutput: clean,
       });
     }
 

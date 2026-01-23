@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle, XCircle, Loader2, Terminal, ChevronDown, Copy, ExternalLink } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Terminal, ChevronDown, Copy, ExternalLink, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Available Codex models - Complete list
@@ -38,6 +38,7 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const [rawAuthOutput, setRawAuthOutput] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [showAuthHelp, setShowAuthHelp] = useState(false);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [model, setModel] = useState(selectedModel || "gpt-5.2-codex");
 
@@ -179,18 +180,27 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
         </div>
 
         {status === "not-authenticated" && (
-          <button
-            onClick={handleAuthenticate}
-            disabled={isAuthenticating}
-            className={cn(
-              "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
-              isAuthenticating
-                ? "bg-gray-700 text-gray-400 cursor-wait"
-                : "bg-emerald-600 hover:bg-emerald-500 text-white"
-            )}
-          >
-            {isAuthenticating ? "Waiting..." : "Login to OpenAI"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleAuthenticate}
+              disabled={isAuthenticating}
+              className={cn(
+                "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+                isAuthenticating
+                  ? "bg-gray-700 text-gray-400 cursor-wait"
+                  : "bg-emerald-600 hover:bg-emerald-500 text-white"
+              )}
+            >
+              {isAuthenticating ? "Waiting..." : "Login to OpenAI"}
+            </button>
+            <button
+              onClick={() => setShowAuthHelp(!showAuthHelp)}
+              className="text-gray-500 hover:text-gray-300 transition-colors"
+              title="Setup instructions"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </div>
         )}
 
         {status === "not-installed" && (
@@ -199,6 +209,35 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
           </div>
         )}
       </div>
+
+      {/* Auth setup help */}
+      {showAuthHelp && (
+        <div className="p-3 bg-gray-900 rounded-lg border border-gray-600 space-y-2">
+          <p className="text-xs font-medium text-white">First-time setup required:</p>
+          <ol className="text-xs text-gray-300 space-y-1.5 list-decimal list-inside">
+            <li>
+              Go to{" "}
+              <a
+                href="https://chatgpt.com/settings"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-400 hover:text-emerald-300 underline"
+              >
+                ChatGPT Settings
+              </a>
+              {" "}&rarr; <strong>Security</strong>
+            </li>
+            <li>
+              Enable <strong>&quot;Device code authorization for Codex&quot;</strong>
+            </li>
+            <li>Come back here and click &quot;Login to OpenAI&quot;</li>
+            <li>Open the link shown, enter the one-time code</li>
+          </ol>
+          <p className="text-xs text-gray-500 mt-2">
+            This is required for headless/remote environments where a browser popup isn&apos;t available.
+          </p>
+        </div>
+      )}
 
       {/* Device auth UI */}
       {isAuthenticating && deviceAuthUrl && (
