@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { auth } from "@/lib/auth";
+import { execFileAsync } from "@/lib/validation";
 
 export async function POST() {
   try {
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     // Try to start browser-based auth flow
-    // The codex CLI should open a browser window
-    exec("codex login", { timeout: 60000 });
+    execFileAsync("codex", ["login"], { timeout: 60000 }).catch(() => {});
 
     return NextResponse.json({
       message: "Auth flow started. Please complete the sign-in in the browser window that opened.",

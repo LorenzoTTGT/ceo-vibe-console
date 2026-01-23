@@ -1,24 +1,28 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { auth } from "@/lib/auth";
+import { execFileAsync } from "@/lib/validation";
 
 export async function GET() {
   try {
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     // Check if codex CLI is installed
     try {
-      await execAsync("which codex");
+      await execFileAsync("which", ["codex"]);
     } catch {
       return NextResponse.json({ installed: false, authenticated: false });
     }
 
     // Check if codex is authenticated
     try {
-      const { stdout: version } = await execAsync("codex --version");
+      const { stdout: version } = await execFileAsync("codex", ["--version"]);
 
       // Check login status with the correct command
-      const { stdout: loginStatus } = await execAsync("codex login status 2>&1");
+      const { stdout: loginStatus } = await execFileAsync("codex", ["login", "status"]);
       const isAuthenticated = loginStatus.toLowerCase().includes("logged in");
 
       return NextResponse.json({

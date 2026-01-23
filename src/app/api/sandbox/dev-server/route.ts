@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { exec, spawn } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import { access } from "fs/promises";
 import path from "path";
 import { createServer } from "net";
-
-const execAsync = promisify(exec);
+import { getSafeRepoPath, execFileAsync } from "@/lib/validation";
 
 const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 // Preview URL for production (Coolify) - falls back to localhost for local dev
@@ -72,7 +70,7 @@ export async function POST(request: NextRequest) {
         // Also kill any lingering process on the port
         if (currentPort) {
           try {
-            await execAsync(`lsof -ti:${currentPort} | xargs kill -9 2>/dev/null || true`);
+            await execFileAsync("bash", ["-c", `lsof -ti:${currentPort} | xargs kill -9 2>/dev/null || true`]);
           } catch {
             // Ignore
           }
@@ -86,7 +84,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Repository name required" }, { status: 400 });
     }
 
-    const repoPath = path.join(WORKSPACE_PATH, repoName);
+    const repoPath = getSafeRepoPath(repoName);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
 
     // Check if repo exists
     try {
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     // Also kill any process on our preferred port
     try {
-      await execAsync(`lsof -ti:${PREFERRED_PORT} | xargs kill -9 2>/dev/null || true`);
+      await execFileAsync("bash", ["-c", `lsof -ti:${PREFERRED_PORT} | xargs kill -9 2>/dev/null || true`]);
       await new Promise((resolve) => setTimeout(resolve, 500));
     } catch {
       // Ignore - no process on port
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
     try {
       await access(path.join(repoPath, "node_modules"));
     } catch {
-      await execAsync(`cd ${repoPath} && npm install`, { timeout: 300000 });
+      await execFileAsync("npm", ["install"], { cwd: repoPath, timeout: 300000 });
     }
 
     // Find an available port (prefer 3001)
@@ -208,6 +209,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await auth();
+
+  if (!session?.user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const logsOnly = searchParams.get("logs") === "true";
   const lastN = parseInt(searchParams.get("last") || "100", 10);

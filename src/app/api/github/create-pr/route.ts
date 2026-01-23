@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { Octokit } from "octokit";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
+import { getSafeRepoPath, safeGit, validateRepoName, validateBranchName } from "@/lib/validation";
 
 // Protected branches that we never push to directly
 const PROTECTED_BRANCHES = ["main", "master", "production", "prod", "release"];
@@ -35,12 +30,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Repository not selected" }, { status: 400 });
     }
 
+    if (!validateRepoName(repoOwner) || !validateRepoName(repoName)) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
+
+    if (targetBranch && !validateBranchName(targetBranch)) {
+      return NextResponse.json({ error: "Invalid target branch name" }, { status: 400 });
+    }
+
+    const repoPath = getSafeRepoPath(repoName);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository path" }, { status: 400 });
+    }
+
     // targetBranch is what the PR will merge INTO (e.g., main)
     // We always create a new vibe/* branch and PR into targetBranch
     // This is safe - we never push directly to protected branches
 
     const octokit = new Octokit({ auth: accessToken });
-    const repoPath = `${WORKSPACE_PATH}/${repoName}`;
 
     // Generate auto branch name: vibe/<date>-<time>-<short-slug>
     const now = new Date();
@@ -52,35 +59,25 @@ export async function POST(request: NextRequest) {
     // Create branch, commit, and push
     try {
       // Ensure we're on the default branch and up to date
-      await execAsync(
-        `cd ${repoPath} && git fetch origin && git checkout ${targetBranch} && git pull origin ${targetBranch}`,
-        { timeout: 60000 }
-      ).catch(() => {
+      try {
+        await safeGit(repoPath, ["fetch", "origin"], { timeout: 60000 });
+        await safeGit(repoPath, ["checkout", targetBranch], { timeout: 30000 });
+        await safeGit(repoPath, ["pull", "origin", targetBranch], { timeout: 60000 });
+      } catch {
         // If target branch doesn't exist locally, try to create it from origin
-        return execAsync(
-          `cd ${repoPath} && git fetch origin && git checkout -b ${targetBranch} origin/${targetBranch}`,
-          { timeout: 60000 }
-        );
-      });
+        await safeGit(repoPath, ["fetch", "origin"], { timeout: 60000 });
+        await safeGit(repoPath, ["checkout", "-b", targetBranch, `origin/${targetBranch}`], { timeout: 60000 });
+      }
 
       // Checkout new branch
-      await execAsync(
-        `cd ${repoPath} && git checkout -b ${branchName}`,
-        { timeout: 30000 }
-      );
+      await safeGit(repoPath, ["checkout", "-b", branchName], { timeout: 30000 });
 
       // Stage all changes
-      await execAsync(
-        `cd ${repoPath} && git add -A`,
-        { timeout: 30000 }
-      );
+      await safeGit(repoPath, ["add", "-A"], { timeout: 30000 });
 
       // Commit with the message
       const commitMessage = `${message}\n\nUI change via Vibe Console`;
-      await execAsync(
-        `cd ${repoPath} && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
-        { timeout: 30000 }
-      );
+      await safeGit(repoPath, ["commit", "-m", commitMessage], { timeout: 30000 });
 
       // SAFETY CHECK: Only push vibe/* branches, never protected branches
       if (!branchName.startsWith("vibe/")) {
@@ -91,14 +88,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Push the branch
-      await execAsync(
-        `cd ${repoPath} && git push -u origin ${branchName}`,
-        { timeout: 60000 }
-      );
+      await safeGit(repoPath, ["push", "-u", "origin", branchName], { timeout: 60000 });
     } catch (gitError) {
       console.error("Git error:", gitError);
       // Try to reset to default branch on failure
-      await execAsync(`cd ${repoPath} && git checkout ${targetBranch} || git checkout main || git checkout master`).catch(() => {});
+      try {
+        await safeGit(repoPath, ["checkout", targetBranch], { timeout: 10000 });
+      } catch {
+        try {
+          await safeGit(repoPath, ["checkout", "main"], { timeout: 10000 });
+        } catch {
+          await safeGit(repoPath, ["checkout", "master"], { timeout: 10000 }).catch(() => {});
+        }
+      }
       return NextResponse.json({
         success: false,
         error: `Git operation failed: ${gitError instanceof Error ? gitError.message : "Unknown error"}`,
@@ -123,7 +125,7 @@ ${message}
       });
 
       // Reset workspace back to default branch for next session
-      await execAsync(`cd ${repoPath} && git checkout ${targetBranch}`).catch(() => {});
+      await safeGit(repoPath, ["checkout", targetBranch]).catch(() => {});
 
       return NextResponse.json({
         success: true,

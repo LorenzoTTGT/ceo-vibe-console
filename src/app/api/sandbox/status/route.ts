@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
+import { auth } from "@/lib/auth";
+import { getSafeRepoPath, safeGit } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const repo = searchParams.get("repo");
 
@@ -19,19 +21,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const repoPath = `${WORKSPACE_PATH}/${repo}`;
+    const repoPath = getSafeRepoPath(repo);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
 
     // Get git status
-    const { stdout: statusOutput } = await execAsync(
-      `cd ${repoPath} && git status --porcelain`,
-      { timeout: 10000 }
-    );
+    const { stdout: statusOutput } = await safeGit(repoPath, ["status", "--porcelain"], { timeout: 10000 });
 
     // Get current branch
-    const { stdout: branchOutput } = await execAsync(
-      `cd ${repoPath} && git branch --show-current`,
-      { timeout: 10000 }
-    );
+    const { stdout: branchOutput } = await safeGit(repoPath, ["branch", "--show-current"], { timeout: 10000 });
 
     // Parse changed files
     const changedFiles = statusOutput

@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-
-const execAsync = promisify(exec);
-
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
+import { getSafeRepoPath, execFileAsync } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const { patch, repo } = await request.json();
 
     if (!patch) {
@@ -20,7 +22,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Repository is required" }, { status: 400 });
     }
 
-    const repoPath = `${WORKSPACE_PATH}/${repo}`;
+    const repoPath = getSafeRepoPath(repo);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
 
     // Save patch to temp file
     const tempDir = "/tmp/vibe-patches";
@@ -30,21 +35,19 @@ export async function POST(request: NextRequest) {
 
     // Apply the patch
     try {
-      const { stdout, stderr } = await execAsync(
-        `cd ${repoPath} && git apply --check ${patchFile} && git apply ${patchFile}`,
-        { timeout: 30000 }
-      );
+      await execFileAsync("git", ["-C", repoPath, "apply", "--check", patchFile], { timeout: 30000 });
+      const { stdout, stderr } = await execFileAsync("git", ["-C", repoPath, "apply", patchFile], { timeout: 30000 });
 
       return NextResponse.json({
         success: true,
         message: "Patch applied successfully",
         output: stdout || stderr,
       });
-    } catch (applyError) {
+    } catch {
       // Try with --3way for better conflict handling
       try {
-        const { stdout, stderr } = await execAsync(
-          `cd ${repoPath} && git apply --3way ${patchFile}`,
+        const { stdout, stderr } = await execFileAsync(
+          "git", ["-C", repoPath, "apply", "--3way", patchFile],
           { timeout: 30000 }
         );
 

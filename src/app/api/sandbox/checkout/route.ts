@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-
-const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
+import { getSafeRepoPath, safeGit, validateBranchName, validateCommitSha } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,49 +16,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Repository name required" }, { status: 400 });
     }
 
+    const repoPath = getSafeRepoPath(repoName);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
+
     if (!branch && !commit) {
       return NextResponse.json({ error: "Branch or commit required" }, { status: 400 });
     }
 
-    const repoPath = `${WORKSPACE_PATH}/${repoName}`;
-    const target = commit || branch;
+    if (branch && !validateBranchName(branch)) {
+      return NextResponse.json({ error: "Invalid branch name" }, { status: 400 });
+    }
+
+    if (commit && !validateCommitSha(commit)) {
+      return NextResponse.json({ error: "Invalid commit SHA" }, { status: 400 });
+    }
 
     try {
       // Fetch latest from origin first
-      await execAsync(`cd ${repoPath} && git fetch origin`, { timeout: 30000 });
+      await safeGit(repoPath, ["fetch", "origin"], { timeout: 30000 });
 
       // Stash any local changes
-      await execAsync(`cd ${repoPath} && git stash`, { timeout: 10000 }).catch(() => {});
+      await safeGit(repoPath, ["stash"], { timeout: 10000 }).catch(() => {});
 
       // Checkout the target branch/commit
       if (branch) {
         // Try to checkout existing branch, or create from origin
         try {
-          await execAsync(`cd ${repoPath} && git checkout ${branch}`, { timeout: 10000 });
+          await safeGit(repoPath, ["checkout", branch], { timeout: 10000 });
         } catch {
           // Branch doesn't exist locally, try from origin
-          await execAsync(`cd ${repoPath} && git checkout -b ${branch} origin/${branch}`, { timeout: 10000 });
+          await safeGit(repoPath, ["checkout", "-b", branch, `origin/${branch}`], { timeout: 10000 });
         }
         // Pull latest
-        await execAsync(`cd ${repoPath} && git pull origin ${branch}`, { timeout: 30000 }).catch(() => {});
+        await safeGit(repoPath, ["pull", "origin", branch], { timeout: 30000 }).catch(() => {});
       } else if (commit) {
         // Checkout specific commit (detached HEAD)
-        await execAsync(`cd ${repoPath} && git checkout ${commit}`, { timeout: 10000 });
+        await safeGit(repoPath, ["checkout", commit], { timeout: 10000 });
       }
 
       // Get current branch/commit info
-      const { stdout: currentBranch } = await execAsync(
-        `cd ${repoPath} && git rev-parse --abbrev-ref HEAD`,
-        { timeout: 5000 }
-      );
-      const { stdout: currentCommit } = await execAsync(
-        `cd ${repoPath} && git rev-parse --short HEAD`,
-        { timeout: 5000 }
-      );
-      const { stdout: commitMessage } = await execAsync(
-        `cd ${repoPath} && git log -1 --pretty=%s`,
-        { timeout: 5000 }
-      );
+      const { stdout: currentBranch } = await safeGit(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"], { timeout: 5000 });
+      const { stdout: currentCommit } = await safeGit(repoPath, ["rev-parse", "--short", "HEAD"], { timeout: 5000 });
+      const { stdout: commitMessage } = await safeGit(repoPath, ["log", "-1", "--pretty=%s"], { timeout: 5000 });
 
       return NextResponse.json({
         success: true,
@@ -103,27 +99,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Repository name required" }, { status: 400 });
     }
 
-    const repoPath = `${WORKSPACE_PATH}/${repoName}`;
+    const repoPath = getSafeRepoPath(repoName);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
 
     try {
-      const { stdout: currentBranch } = await execAsync(
-        `cd ${repoPath} && git rev-parse --abbrev-ref HEAD`,
-        { timeout: 5000 }
-      );
-      const { stdout: currentCommit } = await execAsync(
-        `cd ${repoPath} && git rev-parse --short HEAD`,
-        { timeout: 5000 }
-      );
-      const { stdout: commitMessage } = await execAsync(
-        `cd ${repoPath} && git log -1 --pretty=%s`,
-        { timeout: 5000 }
-      );
+      const { stdout: currentBranch } = await safeGit(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"], { timeout: 5000 });
+      const { stdout: currentCommit } = await safeGit(repoPath, ["rev-parse", "--short", "HEAD"], { timeout: 5000 });
+      const { stdout: commitMessage } = await safeGit(repoPath, ["log", "-1", "--pretty=%s"], { timeout: 5000 });
 
       // Check if there are uncommitted changes
-      const { stdout: status } = await execAsync(
-        `cd ${repoPath} && git status --porcelain`,
-        { timeout: 5000 }
-      );
+      const { stdout: status } = await safeGit(repoPath, ["status", "--porcelain"], { timeout: 5000 });
       const hasChanges = status.trim().length > 0;
 
       return NextResponse.json({

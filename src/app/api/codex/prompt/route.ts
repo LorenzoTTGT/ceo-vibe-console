@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { auth } from "@/lib/auth";
 import { mkdir, writeFile, unlink } from "fs/promises";
 import path from "path";
-
-const execAsync = promisify(exec);
+import { getSafeRepoPath, validateModel, execFileAsync } from "@/lib/validation";
 
 // Path to the sandbox workspace
 const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
@@ -24,6 +22,12 @@ export async function POST(request: NextRequest) {
   const imagePaths: string[] = [];
 
   try {
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     // Check content type to determine how to parse
     const contentType = request.headers.get("content-type") || "";
 
@@ -63,11 +67,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Prompt or image is required" }, { status: 400 });
     }
 
-    // Determine the workspace path
-    const repoPath = repo ? path.join(WORKSPACE_PATH, repo) : WORKSPACE_PATH;
-
-    // Model to use (default to gpt-5.2-codex)
+    // Validate model
     const selectedModel = model || "gpt-5.2-codex";
+    if (!validateModel(selectedModel)) {
+      return NextResponse.json({ error: "Invalid model" }, { status: 400 });
+    }
+
+    // Determine the workspace path
+    let repoPath: string;
+    if (repo) {
+      const safePath = getSafeRepoPath(repo);
+      if (!safePath) {
+        return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+      }
+      repoPath = safePath;
+    } else {
+      repoPath = WORKSPACE_PATH;
+    }
 
     // Build the full prompt with constraints
     const fullPrompt = `You are a UI assistant helping make visual changes to a Next.js application.
@@ -84,18 +100,21 @@ USER REQUEST: ${prompt || "See the attached image(s) for what I want to achieve"
 
 Make the requested changes now.`;
 
-    // Escape the prompt for shell (replace double quotes and handle special chars)
-    const escapedPrompt = fullPrompt.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
+    // Build args array for codex exec
+    const args = ["exec", "--full-auto", "--json", "-m", selectedModel];
 
-    // Build image flags for codex exec
-    const imageFlags = imagePaths.map((p) => `-i "${p}"`).join(" ");
+    // Add image flags
+    for (const imagePath of imagePaths) {
+      args.push("-i", imagePath);
+    }
 
-    // Run codex exec with --full-auto to allow edits, --json for machine-readable output, -m for model, and -i for images
-    const command = `cd "${repoPath}" && codex exec --full-auto --json -m "${selectedModel}" ${imageFlags} "${escapedPrompt}"`;
+    // Add prompt
+    args.push(fullPrompt);
 
-    console.log("Running codex command:", command);
+    console.log("Running codex with args:", args.slice(0, 5).join(" "), "...");
 
-    const { stdout, stderr } = await execAsync(command, {
+    const { stdout, stderr } = await execFileAsync("codex", args, {
+      cwd: repoPath,
       timeout: 300000, // 5 minute timeout for longer operations
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
@@ -113,7 +132,7 @@ Make the requested changes now.`;
     // Each line is a separate JSON event
     const lines = stdout.split('\n').filter(line => line.trim());
     let explanation = '';
-    let filesChanged: string[] = [];
+    const filesChanged: string[] = [];
 
     for (const line of lines) {
       try {

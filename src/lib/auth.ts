@@ -94,11 +94,7 @@ export async function auth() {
 export async function getCurrentUser() {
   const session = await auth();
 
-  // Debug: log session structure
-  console.log("getCurrentUser session:", JSON.stringify(session, null, 2));
-
   if (!session?.user?.githubId) {
-    console.log("No githubId in session, returning null");
     return null;
   }
 

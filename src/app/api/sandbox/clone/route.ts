@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, getCurrentUser } from "@/lib/auth";
 import { getOrCreateRepo } from "@/db/helpers";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { access, mkdir } from "fs/promises";
 import path from "path";
-
-const execAsync = promisify(exec);
+import { validateRepoName, getSafeRepoPath, execFileAsync, safeGit } from "@/lib/validation";
 
 const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 
@@ -31,7 +28,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Repository info required" }, { status: 400 });
     }
 
-    const repoPath = path.join(WORKSPACE_PATH, repoName);
+    if (!validateRepoName(repoOwner) || !validateRepoName(repoName)) {
+      return NextResponse.json({ error: "Invalid repository name" }, { status: 400 });
+    }
+
+    const repoPath = getSafeRepoPath(repoName);
+    if (!repoPath) {
+      return NextResponse.json({ error: "Invalid repository path" }, { status: 400 });
+    }
 
     // Step 1: Clone
     if (!step || step === "clone") {
@@ -44,15 +48,14 @@ export async function POST(request: NextRequest) {
         await access(path.join(repoPath, ".git"));
         alreadyExists = true;
 
-        // Repo exists, pull latest
-        await execAsync(`cd ${repoPath} && git fetch origin && git pull origin HEAD`, {
-          timeout: 120000,
-        });
+        // Repo exists, fetch and pull latest
+        await safeGit(repoPath, ["fetch", "origin"], { timeout: 120000 });
+        await safeGit(repoPath, ["pull", "origin", "HEAD"], { timeout: 120000 });
       } catch {
         // Repo doesn't exist, clone it
         const cloneUrl = `https://${accessToken}@github.com/${repoOwner}/${repoName}.git`;
 
-        await execAsync(`git clone ${cloneUrl} ${repoPath}`, {
+        await execFileAsync("git", ["clone", cloneUrl, repoPath], {
           timeout: 300000, // 5 minutes for large repos
         });
       }
@@ -91,20 +94,21 @@ export async function POST(request: NextRequest) {
 
         if (needsInstall) {
           // Detect package manager (pnpm, yarn, or npm)
-          let installCmd = "npm install";
+          let installCmd = "npm";
           try {
             await access(path.join(repoPath, "pnpm-lock.yaml"));
-            installCmd = "pnpm install";
+            installCmd = "pnpm";
           } catch {
             try {
               await access(path.join(repoPath, "yarn.lock"));
-              installCmd = "yarn install";
+              installCmd = "yarn";
             } catch {
               // Use npm
             }
           }
 
-          await execAsync(`cd ${repoPath} && ${installCmd}`, {
+          await execFileAsync(installCmd, ["install"], {
+            cwd: repoPath,
             timeout: 300000, // 5 minutes for install
           });
         }
