@@ -82,6 +82,14 @@ export async function POST(request: NextRequest) {
         { timeout: 30000 }
       );
 
+      // SAFETY CHECK: Only push vibe/* branches, never protected branches
+      if (!branchName.startsWith("vibe/")) {
+        throw new Error(`Safety: Refusing to push non-vibe branch: ${branchName}`);
+      }
+      if (PROTECTED_BRANCHES.includes(branchName)) {
+        throw new Error(`Safety: Refusing to push to protected branch: ${branchName}`);
+      }
+
       // Push the branch
       await execAsync(
         `cd ${repoPath} && git push -u origin ${branchName}`,
