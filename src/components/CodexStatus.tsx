@@ -39,6 +39,7 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
   const [rawAuthOutput, setRawAuthOutput] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const [showAuthHelp, setShowAuthHelp] = useState(false);
+  const [codexEmail, setCodexEmail] = useState<string | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [model, setModel] = useState(selectedModel || "gpt-5.2-codex");
 
@@ -60,6 +61,7 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
 
       if (data.installed && data.authenticated) {
         setStatus("ready");
+        setCodexEmail(data.codexEmail || null);
         onStatusChange(true);
       } else if (!data.installed) {
         setStatus("not-installed");
@@ -161,7 +163,9 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
             {status === "ready" && (
               <>
                 <CheckCircle className="w-3 h-3 text-emerald-500" />
-                <span className="text-xs text-emerald-400">Connected</span>
+                <span className="text-xs text-emerald-400">
+                  Connected{codexEmail ? ` (${codexEmail})` : ""}
+                </span>
               </>
             )}
             {status === "not-installed" && (

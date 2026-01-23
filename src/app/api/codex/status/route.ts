@@ -1,6 +1,24 @@
 import { NextResponse } from "next/server";
+import { readFile } from "fs/promises";
+import { homedir } from "os";
+import path from "path";
 import { auth } from "@/lib/auth";
 import { execFileAsync } from "@/lib/validation";
+
+async function getCodexEmail(): Promise<string | null> {
+  try {
+    const authPath = path.join(homedir(), ".codex", "auth.json");
+    const raw = await readFile(authPath, "utf-8");
+    const data = JSON.parse(raw);
+    // Decode the id_token JWT payload (base64url) to get email
+    const idToken = data?.tokens?.id_token;
+    if (!idToken) return null;
+    const payload = JSON.parse(Buffer.from(idToken.split(".")[1], "base64url").toString());
+    return payload?.email || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET() {
   try {
@@ -25,11 +43,15 @@ export async function GET() {
       const { stdout: loginStatus } = await execFileAsync("codex", ["login", "status"]);
       const isAuthenticated = loginStatus.toLowerCase().includes("logged in");
 
+      // Get the logged-in OpenAI email
+      const codexEmail = isAuthenticated ? await getCodexEmail() : null;
+
       return NextResponse.json({
         installed: true,
         authenticated: isAuthenticated,
         version: version.trim(),
         status: loginStatus.trim(),
+        codexEmail,
       });
     } catch {
       return NextResponse.json({ installed: true, authenticated: false });
