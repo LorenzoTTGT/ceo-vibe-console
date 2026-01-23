@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { spawn } from "child_process";
+import { spawn, execFile } from "child_process";
+import { promisify } from "util";
 import { auth } from "@/lib/auth";
+
+const execFileAsync = promisify(execFile);
 
 export async function POST() {
   try {
@@ -97,5 +100,22 @@ export async function POST() {
       error: "Could not start auth flow. Is codex installed?",
       manual: true,
     });
+  }
+}
+
+export async function DELETE() {
+  try {
+    const session = await auth();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    await execFileAsync("codex", ["logout"], { timeout: 10000 });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Codex logout error:", error);
+    return NextResponse.json({ error: "Logout failed" }, { status: 500 });
   }
 }

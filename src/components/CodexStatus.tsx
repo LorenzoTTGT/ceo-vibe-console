@@ -137,6 +137,17 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
     }
   };
 
+  const handleDisconnect = async () => {
+    try {
+      await fetch("/api/codex/auth", { method: "DELETE" });
+      setStatus("not-authenticated");
+      setCodexEmail(null);
+      onStatusChange(false);
+    } catch (error) {
+      console.error("Disconnect error:", error);
+    }
+  };
+
   const handleModelSelect = (modelId: string) => {
     setModel(modelId);
     localStorage.setItem("codex-model", modelId);
@@ -161,12 +172,18 @@ export function CodexStatus({ onStatusChange, onModelChange, selectedModel }: Co
               </>
             )}
             {status === "ready" && (
-              <>
+              <div className="flex items-center gap-2">
                 <CheckCircle className="w-3 h-3 text-emerald-500" />
                 <span className="text-xs text-emerald-400">
                   Connected{codexEmail ? ` (${codexEmail})` : ""}
                 </span>
-              </>
+                <button
+                  onClick={handleDisconnect}
+                  className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                >
+                  Disconnect
+                </button>
+              </div>
             )}
             {status === "not-installed" && (
               <>
