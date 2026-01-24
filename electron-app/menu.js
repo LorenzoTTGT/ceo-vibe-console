@@ -1,11 +1,19 @@
 const { app, Menu, dialog } = require("electron");
-const { autoUpdater } = require("electron-updater");
 
 function buildMenu() {
   const isMac = process.platform === "darwin";
 
-  // Configure auto-updater
-  autoUpdater.autoDownload = false;
+  // Lazy-load electron-updater to avoid crash in dev mode
+  let autoUpdater;
+  try {
+    autoUpdater = require("electron-updater").autoUpdater;
+  } catch (e) {
+    autoUpdater = null;
+  }
+
+  if (autoUpdater) {
+    // Configure auto-updater
+    autoUpdater.autoDownload = false;
 
   autoUpdater.on("update-available", async (info) => {
     const { response } = await dialog.showMessageBox({
@@ -51,9 +59,10 @@ function buildMenu() {
     );
   });
 
-  // Check for updates silently on launch
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdates().catch(() => {});
+    // Check for updates silently on launch
+    if (app.isPackaged) {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }
   }
 
   const template = [
@@ -121,8 +130,9 @@ function buildMenu() {
       submenu: [
         {
           label: "Check for Updates...",
+          enabled: !!autoUpdater,
           click: () => {
-            autoUpdater.checkForUpdatesAndNotify();
+            if (autoUpdater) autoUpdater.checkForUpdatesAndNotify();
           },
         },
       ],

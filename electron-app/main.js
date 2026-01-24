@@ -81,21 +81,14 @@ function createWindow() {
 
   mainWindow.loadURL(`http://localhost:${PORT}`);
 
-  // Open external links (OAuth, device-auth) in default browser
+  // All navigation stays in the Electron window (OAuth needs this)
+  // Only window.open() to non-localhost URLs opens in the system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://localhost")) {
       return { action: "allow" };
     }
     shell.openExternal(url);
     return { action: "deny" };
-  });
-
-  // Also handle navigation to external URLs
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(`http://localhost:${PORT}`)) {
-      event.preventDefault();
-      shell.openExternal(url);
-    }
   });
 
   mainWindow.on("closed", () => {
