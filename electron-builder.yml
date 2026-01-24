@@ -1,0 +1,57 @@
+appId: com.guiido.vibe-console
+productName: Vibe Console
+copyright: Copyright © 2024 Guiido
+
+publish:
+  provider: github
+
+extraResources:
+  - from: .next/standalone
+    to: .next/standalone
+    filter:
+      - "**/*"
+      - "!.git"
+      - "!.git/**"
+  - from: .next/static
+    to: .next/static
+    filter:
+      - "**/*"
+  - from: public
+    to: public
+    filter:
+      - "**/*"
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+win:
+  target:
+    - nsis
+  publisherName: Guiido
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb
+
+files:
+  - electron/**/*
+  - package.json
+  - "!src"
+  - "!.next"
+  - "!public"
+  - "!**/*.ts"
+  - "!**/*.tsx"
+  - "!**/*.map"
+
+asar: true
