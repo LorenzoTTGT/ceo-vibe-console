@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { spawn, execFile } from "child_process";
+import { spawn, execFile, ChildProcess } from "child_process";
 import { promisify } from "util";
 import { auth } from "@/lib/auth";
 
 const execFileAsync = promisify(execFile);
+
+// Keep track of the auth process so it stays alive
+let activeAuthProcess: ChildProcess | null = null;
 
 export async function POST() {
   try {
@@ -11,6 +14,16 @@ export async function POST() {
 
     if (!session?.user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    // Kill any existing auth process
+    if (activeAuthProcess) {
+      try {
+        activeAuthProcess.kill();
+      } catch {
+        // Ignore
+      }
+      activeAuthProcess = null;
     }
 
     // Run device-auth flow via spawn so we can read output without blocking
@@ -21,15 +34,18 @@ export async function POST() {
 
       const proc = spawn("codex", ["login", "--device-auth"], {
         stdio: ["ignore", "pipe", "pipe"],
-        detached: true,
+        // Don't detach - keep process attached so it survives
       });
+
+      // Store reference to keep process alive
+      activeAuthProcess = proc;
 
       proc.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString();
         // Once we detect a URL in the output, resolve immediately
+        // but DON'T detach - keep process running
         if (!resolved && /https?:\/\/\S+/.test(stdout)) {
           resolved = true;
-          proc.unref(); // Let process continue in background
           resolve({ stdout });
         }
       });
@@ -43,6 +59,7 @@ export async function POST() {
           resolved = true;
           resolve({ stdout, error: err.message });
         }
+        activeAuthProcess = null;
       });
 
       proc.on("close", () => {
@@ -50,13 +67,13 @@ export async function POST() {
           resolved = true;
           resolve({ stdout, error: stderr || undefined });
         }
+        activeAuthProcess = null;
       });
 
       // Timeout after 10 seconds if no URL detected
       setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          proc.unref();
           resolve({ stdout, error: stdout ? undefined : "Timed out waiting for device auth output" });
         }
       }, 10000);
