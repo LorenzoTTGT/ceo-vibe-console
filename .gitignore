@@ -17,8 +17,10 @@
 /.next/
 /out/
 
-# production
+# production (but keep electron-builder icons)
 /build
+!/build/icon.png
+!/build/icon.icns
 
 # electron-builder output
 /dist/

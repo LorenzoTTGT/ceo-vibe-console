@@ -5,33 +5,26 @@ copyright: Copyright © 2024 Guiido
 publish:
   provider: github
 
-extraResources:
-  - from: .next/standalone
-    to: .next/standalone
-    filter:
-      - "**/*"
-      - "!.git"
-      - "!.git/**"
-  - from: .next/static
-    to: .next/static
-    filter:
-      - "**/*"
-  - from: public
-    to: public
-    filter:
-      - "**/*"
+directories:
+  buildResources: build
 
 mac:
   category: public.app-category.developer-tools
+  icon: build/icon.icns
   target:
     - dmg
     - zip
-  hardenedRuntime: true
+  # Skip code signing for local builds (set CSC_IDENTITY_AUTO_DISCOVERY=false)
+  identity: null
+  hardenedRuntime: false
   gatekeeperAssess: false
 
 win:
+  icon: build/icon.png
   target:
     - nsis
+  # For unsigned builds, Windows will show SmartScreen warning
+  # User clicks "More info" > "Run anyway"
   publisherName: Guiido
 
 nsis:
