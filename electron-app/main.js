@@ -1,8 +1,43 @@
 const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { execSync } = require("child_process");
 const { installCLIs } = require("./cli-installer");
 const { buildMenu } = require("./menu");
+
+// Load environment variables from user data folder
+function loadUserEnv() {
+  const userData = app.getPath("userData");
+  const envPath = path.join(userData, ".env.local");
+
+  if (fs.existsSync(envPath)) {
+    console.log("[env] Loading from", envPath);
+    const content = fs.readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const eqIndex = trimmed.indexOf("=");
+      if (eqIndex === -1) continue;
+
+      const key = trimmed.substring(0, eqIndex);
+      let value = trimmed.substring(eqIndex + 1);
+
+      // Remove surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+
+      // Only set if not already set (allow env override)
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  } else {
+    console.log("[env] No .env.local found at", envPath);
+  }
+}
 
 // Fix PATH for macOS/Linux GUI apps that don't inherit shell environment
 function fixPath() {
@@ -41,7 +76,7 @@ function fixPath() {
 }
 fixPath();
 
-const PORT = 3000;
+let PORT = 3100; // Use 3100 to avoid conflicts with sandbox on 3000/3001
 const isDev = !app.isPackaged;
 
 let mainWindow = null;
@@ -54,9 +89,46 @@ function getResourcePath(...segments) {
   return path.join(process.resourcesPath, ...segments);
 }
 
+// Find which port Next.js actually started on by checking a marker file
+async function findDevServerPort() {
+  // In dev mode, Next.js writes its port to stdout which we can't easily capture
+  // So we'll probe common ports to find the Vibe Console server
+  const http = require("http");
+  const ports = [3100, 3101, 3102, 3000, 3001, 3002];
+
+  for (const port of ports) {
+    try {
+      const isVibeConsole = await new Promise((resolve) => {
+        const req = http.get(`http://localhost:${port}/api/auth/session`, (res) => {
+          // Vibe Console will return 200 with JSON, sandbox might not have this endpoint
+          resolve(res.statusCode === 200);
+        });
+        req.on("error", () => resolve(false));
+        req.setTimeout(1000, () => {
+          req.destroy();
+          resolve(false);
+        });
+      });
+
+      if (isVibeConsole) {
+        console.log(`[electron] Found Vibe Console on port ${port}`);
+        return port;
+      }
+    } catch {
+      // Try next port
+    }
+  }
+
+  // Fallback to 3000
+  console.log("[electron] Could not find Vibe Console, falling back to port 3000");
+  return 3000;
+}
+
 async function startNextServer() {
   if (isDev) {
-    // In dev mode, assume `next dev` is already running via concurrently
+    // In dev mode, we use --port 3100 in package.json, so PORT is already correct
+    // The wait-on in package.json ensures the server is ready
+    console.log(`[electron] Dev mode - using port ${PORT}`);
     return;
   }
 
@@ -65,6 +137,44 @@ async function startNextServer() {
   process.env.PORT = String(PORT);
   process.env.HOSTNAME = "localhost";
   require(serverPath);
+}
+
+/**
+ * Wait for the Next.js server to be ready (production only)
+ * Polls the server until it responds or times out
+ */
+async function waitForServerReady(maxWaitMs = 30000, intervalMs = 500) {
+  const http = require("http");
+  const startTime = Date.now();
+
+  console.log(`[electron] Waiting for server on port ${PORT}...`);
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const isReady = await new Promise((resolve) => {
+        const req = http.get(`http://localhost:${PORT}/`, (res) => {
+          resolve(res.statusCode === 200 || res.statusCode === 302);
+        });
+        req.on("error", () => resolve(false));
+        req.setTimeout(1000, () => {
+          req.destroy();
+          resolve(false);
+        });
+      });
+
+      if (isReady) {
+        console.log(`[electron] Server ready after ${Date.now() - startTime}ms`);
+        return true;
+      }
+    } catch {
+      // Server not ready yet
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  console.log(`[electron] Server not ready after ${maxWaitMs}ms, proceeding anyway`);
+  return false;
 }
 
 function createWindow() {
@@ -79,6 +189,7 @@ function createWindow() {
     title: "Vibe Console",
   });
 
+  console.log(`[electron] Loading http://localhost:${PORT}`);
   mainWindow.loadURL(`http://localhost:${PORT}`);
 
   // All navigation stays in the Electron window (OAuth needs this)
@@ -112,9 +223,9 @@ app.whenReady().then(async () => {
   // Start the Next.js server
   await startNextServer();
 
-  // Wait briefly for server to be ready in production
+  // Wait for server to be ready in production (with proper readiness check)
   if (!isDev) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await waitForServerReady();
   }
 
   createWindow();

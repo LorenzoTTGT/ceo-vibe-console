@@ -1,12 +1,31 @@
 import { NextResponse } from "next/server";
-import { spawn, execFile, ChildProcess } from "child_process";
+import { spawn, execFile } from "child_process";
 import { promisify } from "util";
 import { auth } from "@/lib/auth";
+import { writeFile, readFile, unlink } from "fs/promises";
+import { homedir, tmpdir } from "os";
+import path from "path";
 
 const execFileAsync = promisify(execFile);
 
-// Keep track of the auth process so it stays alive
-let activeAuthProcess: ChildProcess | null = null;
+// PID file to track the background auth process
+const AUTH_PID_FILE = path.join(tmpdir(), "codex-auth.pid");
+
+async function killExistingAuthProcess() {
+  try {
+    const pid = await readFile(AUTH_PID_FILE, "utf-8");
+    if (pid) {
+      try {
+        process.kill(parseInt(pid.trim(), 10), "SIGTERM");
+      } catch {
+        // Process already dead
+      }
+      await unlink(AUTH_PID_FILE);
+    }
+  } catch {
+    // No PID file
+  }
+}
 
 export async function POST() {
   try {
@@ -17,57 +36,66 @@ export async function POST() {
     }
 
     // Kill any existing auth process
-    if (activeAuthProcess) {
-      try {
-        activeAuthProcess.kill();
-      } catch {
-        // Ignore
-      }
-      activeAuthProcess = null;
-    }
+    await killExistingAuthProcess();
 
-    // Run device-auth flow via spawn so we can read output without blocking
+    // Run device-auth flow via spawn
+    // Use shell with nohup to ensure process survives even if parent dies
     const result = await new Promise<{ stdout: string; error?: string }>((resolve) => {
       let stdout = "";
       let stderr = "";
       let resolved = false;
 
+      // Start codex in detached mode so it survives if the API handler exits
       const proc = spawn("codex", ["login", "--device-auth"], {
         stdio: ["ignore", "pipe", "pipe"],
-        // Don't detach - keep process attached so it survives
+        detached: true, // Run in separate process group (critical for survival)
+        env: {
+          ...process.env,
+          // Ensure HOME is set for codex to find/write config
+          HOME: homedir(),
+        },
       });
 
-      // Store reference to keep process alive
-      activeAuthProcess = proc;
+      // Save PID to file so we can track/kill it later
+      if (proc.pid) {
+        writeFile(AUTH_PID_FILE, String(proc.pid)).catch(() => {});
+      }
 
       proc.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString();
+        console.log("[codex auth stdout]", chunk.toString());
         // Once we detect a URL in the output, resolve immediately
-        // but DON'T detach - keep process running
+        // Then unref the process so it runs in background
         if (!resolved && /https?:\/\/\S+/.test(stdout)) {
           resolved = true;
+          // Unref so Node.js doesn't wait for this process
+          // The process will continue polling OpenAI in background
+          proc.unref();
           resolve({ stdout });
         }
       });
 
       proc.stderr.on("data", (chunk: Buffer) => {
         stderr += chunk.toString();
+        console.log("[codex auth stderr]", chunk.toString());
       });
 
       proc.on("error", (err) => {
+        console.error("[codex auth error]", err);
         if (!resolved) {
           resolved = true;
           resolve({ stdout, error: err.message });
         }
-        activeAuthProcess = null;
       });
 
-      proc.on("close", () => {
+      proc.on("close", (code) => {
+        console.log("[codex auth close]", code);
+        // Clean up PID file when process ends
+        unlink(AUTH_PID_FILE).catch(() => {});
         if (!resolved) {
           resolved = true;
           resolve({ stdout, error: stderr || undefined });
         }
-        activeAuthProcess = null;
       });
 
       // Timeout after 10 seconds if no URL detected

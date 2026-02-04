@@ -1,4 +1,6 @@
-const { app, Menu, dialog } = require("electron");
+const { app, Menu, dialog, shell } = require("electron");
+const fs = require("fs");
+const path = require("path");
 
 function buildMenu() {
   const isMac = process.platform === "darwin";
@@ -128,6 +130,63 @@ function buildMenu() {
     {
       label: "Help",
       submenu: [
+        {
+          label: "Download Setup Template (.env.local)",
+          click: async () => {
+            const template = `# Vibe Console - Environment Configuration
+# ===========================================
+# Copy this file to the app's data folder as .env.local
+#
+# On Windows: %APPDATA%\\vibe-console\\.env.local
+# On macOS: ~/Library/Application Support/vibe-console/.env.local
+# On Linux: ~/.config/vibe-console/.env.local
+
+# NextAuth Configuration
+# ----------------------
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
+
+# GitHub OAuth App
+# ----------------
+# Create your OAuth app at: https://github.com/settings/developers
+# - Set "Homepage URL" to: http://localhost:3000
+# - Set "Authorization callback URL" to: http://localhost:3000/api/auth/callback/github
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+
+# Access Control
+# --------------
+# Comma-separated list of emails allowed to use the app
+# Leave empty to allow anyone who can authenticate
+ALLOWED_EMAILS=
+
+# Preview Configuration
+# ---------------------
+NEXT_PUBLIC_PREVIEW_URL=http://localhost:3001
+`;
+
+            const { filePath } = await dialog.showSaveDialog({
+              title: "Save Environment Template",
+              defaultPath: "env.local.template.txt",
+              filters: [
+                { name: "Text Files", extensions: ["txt"] },
+                { name: "All Files", extensions: ["*"] },
+              ],
+            });
+
+            if (filePath) {
+              fs.writeFileSync(filePath, template, "utf-8");
+              shell.showItemInFolder(filePath);
+            }
+          },
+        },
+        {
+          label: "Open Data Folder",
+          click: () => {
+            shell.openPath(app.getPath("userData"));
+          },
+        },
+        { type: "separator" },
         {
           label: "Check for Updates...",
           enabled: !!autoUpdater,

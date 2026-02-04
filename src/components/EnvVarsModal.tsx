@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Loader2, Check, FileText, Upload, Eye, EyeOff, RotateCcw } from "lucide-react";
+import { X, Loader2, Check, FileText, Upload, Eye, EyeOff, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface EnvVarsModalProps {
@@ -124,6 +124,22 @@ export function EnvVarsModal({ repoName, isOpen, onClose }: EnvVarsModalProps) {
     reader.readAsText(file);
   };
 
+  const handleDownloadEnvFile = () => {
+    // Generate the actual .env.local content with real values
+    const content = envVars.map(({ key, value }) => `${key}=${value}`).join("\n") + "\n";
+
+    // Create and trigger download
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${repoName}.env.local`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setSaved(false);
@@ -225,6 +241,15 @@ export function EnvVarsModal({ repoName, isOpen, onClose }: EnvVarsModalProps) {
                   <Upload className="w-4 h-4" />
                   Upload .env file
                 </button>
+                {envVars.length > 0 && (
+                  <button
+                    onClick={handleDownloadEnvFile}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded-lg text-sm text-white transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download .env.local
+                  </button>
+                )}
                 {fileName && (
                   <span className="text-sm text-gray-400">
                     Loaded: <code className="text-emerald-400">{fileName}</code>
