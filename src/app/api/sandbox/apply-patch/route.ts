@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
+import { tmpdir } from "os";
 import path from "path";
 import { getSafeRepoPath, execFileAsync } from "@/lib/validation";
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Save patch to temp file
-    const tempDir = "/tmp/vibe-patches";
+    const tempDir = path.join(tmpdir(), "vibe-patches");
     await mkdir(tempDir, { recursive: true });
     const patchFile = path.join(tempDir, `patch-${Date.now()}.patch`);
     await writeFile(patchFile, patch);

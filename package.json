@@ -1,6 +1,8 @@
 {
   "name": "ceo-vibe-console",
   "version": "0.1.0",
+  "description": "Cross-platform Next.js and Electron console for repo review, preview, and AI-assisted changes.",
+  "author": "Guiido",
   "private": true,
   "main": "electron-app/main.js",
   "scripts": {

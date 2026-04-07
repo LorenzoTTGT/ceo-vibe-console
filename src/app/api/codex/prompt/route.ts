@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { mkdir, writeFile, unlink } from "fs/promises";
+import { tmpdir } from "os";
 import path from "path";
-import { getSafeRepoPath, validateModel, execFileAsync } from "@/lib/validation";
+import { getPlatformCommand, getSafeRepoPath, validateModel, execFileAsync } from "@/lib/validation";
 
 // Path to the sandbox workspace
 const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 
 // Temp directory for images
-const TEMP_DIR = "/tmp/ceo-codex-images";
+const TEMP_DIR = path.join(tmpdir(), "ceo-codex-images");
 
 // Allowed paths for editing (security constraint)
 const ALLOWED_PATHS = [
@@ -102,6 +103,7 @@ Make the requested changes now.`;
 
     // Build args array for codex exec
     const args = ["exec", "--full-auto", "--json", "-m", selectedModel];
+    const codexCommand = getPlatformCommand("codex");
 
     // Add image flags
     for (const imagePath of imagePaths) {
@@ -113,7 +115,7 @@ Make the requested changes now.`;
 
     console.log("Running codex with args:", args.slice(0, 5).join(" "), "...");
 
-    const { stdout, stderr } = await execFileAsync("codex", args, {
+    const { stdout, stderr } = await execFileAsync(codexCommand, args, {
       cwd: repoPath,
       timeout: 300000, // 5 minute timeout for longer operations
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer

@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { auth } from "@/lib/auth";
-import { execFileAsync } from "@/lib/validation";
+import { commandExists, execFileAsync, getPlatformCommand } from "@/lib/validation";
 
 interface AuthFileData {
   email: string | null;
@@ -47,22 +47,22 @@ export async function GET() {
     }
 
     // Check if codex CLI is installed
-    try {
-      await execFileAsync("which", ["codex"]);
-    } catch {
+    if (!(await commandExists("codex"))) {
       return NextResponse.json({ installed: false, authenticated: false });
     }
 
+    const codexCommand = getPlatformCommand("codex");
+
     // Check if codex is authenticated
     try {
-      const { stdout: version } = await execFileAsync("codex", ["--version"]);
+      const { stdout: version } = await execFileAsync(codexCommand, ["--version"]);
 
       // Check login status - try CLI first, then fall back to auth file
       let isAuthenticated = false;
       let loginStatus = "";
 
       try {
-        const result = await execFileAsync("codex", ["login", "status"]);
+        const result = await execFileAsync(codexCommand, ["login", "status"]);
         loginStatus = result.stdout.trim();
         isAuthenticated = loginStatus.toLowerCase().includes("logged in");
       } catch {

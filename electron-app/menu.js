@@ -133,24 +133,26 @@ function buildMenu() {
         {
           label: "Download Setup Template (.env.local)",
           click: async () => {
+            const appUrl = "http://localhost:3100";
+            const userDataPath = app.getPath("userData");
             const template = `# Vibe Console - Environment Configuration
 # ===========================================
 # Copy this file to the app's data folder as .env.local
 #
-# On Windows: %APPDATA%\\vibe-console\\.env.local
-# On macOS: ~/Library/Application Support/vibe-console/.env.local
-# On Linux: ~/.config/vibe-console/.env.local
+# Recommended: use Help > Open Data Folder, then place this file there
+# Actual data folder on this machine:
+# ${userDataPath}
 
 # NextAuth Configuration
 # ----------------------
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=${appUrl}
 NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 
 # GitHub OAuth App
 # ----------------
 # Create your OAuth app at: https://github.com/settings/developers
-# - Set "Homepage URL" to: http://localhost:3000
-# - Set "Authorization callback URL" to: http://localhost:3000/api/auth/callback/github
+# - Set "Homepage URL" to: ${appUrl}
+# - Set "Authorization callback URL" to: ${appUrl}/api/auth/callback/github
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 

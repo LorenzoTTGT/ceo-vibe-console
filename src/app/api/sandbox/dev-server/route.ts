@@ -4,7 +4,7 @@ import { spawn } from "child_process";
 import { access } from "fs/promises";
 import path from "path";
 import { createServer } from "net";
-import { getSafeRepoPath, execFileAsync } from "@/lib/validation";
+import { getPlatformCommand, getSafeRepoPath, execFileAsync } from "@/lib/validation";
 
 const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 // Preview URL for production (Coolify) - falls back to localhost for local dev
@@ -17,6 +17,67 @@ let currentPort: number | null = null;
 let serverLogs: string[] = [];
 const MAX_LOGS = 500; // Keep last 500 lines
 const PREFERRED_PORT = 3001; // Always try to use this port
+
+function getCleanDevEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: "development",
+  };
+
+  const blockedKeys = [
+    "PORT",
+    "HOSTNAME",
+    "NEXT_RUNTIME",
+    "TURBOPACK",
+  ];
+
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("__NEXT")) {
+      delete env[key];
+    }
+  }
+
+  for (const key of blockedKeys) {
+    delete env[key];
+  }
+
+  return env;
+}
+
+async function killProcessTree(pid: number | undefined | null) {
+  if (!pid) return;
+
+  if (process.platform === "win32") {
+    await execFileAsync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+      timeout: 15000,
+    }).catch(() => {});
+    return;
+  }
+
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Ignore missing process
+    }
+  }
+}
+
+async function killProcessOnPort(port: number) {
+  if (process.platform === "win32") {
+    const script = `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { taskkill /PID $_ /T /F }`;
+    await execFileAsync("powershell", ["-NoProfile", "-Command", script], {
+      timeout: 20000,
+    }).catch(() => {});
+      return;
+  }
+
+  await execFileAsync("bash", ["-lc", `lsof -ti:${port} | xargs kill -9 2>/dev/null || true`], {
+    timeout: 20000,
+  }).catch(() => {});
+}
 
 // Build the preview URL - uses env var in production, localhost:port in dev
 function getPreviewUrl(port: number): string {
@@ -59,21 +120,12 @@ export async function POST(request: NextRequest) {
 
     if (action === "stop") {
       if (devServerProcess) {
-        // Kill the process group to ensure all children are killed
-        try {
-          process.kill(-devServerProcess.pid!, "SIGTERM");
-        } catch {
-          devServerProcess.kill("SIGTERM");
-        }
+        await killProcessTree(devServerProcess.pid);
         devServerProcess = null;
         currentRepo = null;
         // Also kill any lingering process on the port
         if (currentPort) {
-          try {
-            await execFileAsync("bash", ["-c", `lsof -ti:${currentPort} | xargs kill -9 2>/dev/null || true`]);
-          } catch {
-            // Ignore
-          }
+          await killProcessOnPort(currentPort);
         }
         currentPort = null;
       }
@@ -111,30 +163,21 @@ export async function POST(request: NextRequest) {
 
     // Stop existing server if different repo
     if (devServerProcess) {
-      // Kill the process group to ensure all children are killed
-      try {
-        process.kill(-devServerProcess.pid!, "SIGTERM");
-      } catch {
-        devServerProcess.kill("SIGTERM");
-      }
+      await killProcessTree(devServerProcess.pid);
       devServerProcess = null;
       // Wait a moment for port to be released
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     // Also kill any process on our preferred port
-    try {
-      await execFileAsync("bash", ["-c", `lsof -ti:${PREFERRED_PORT} | xargs kill -9 2>/dev/null || true`]);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    } catch {
-      // Ignore - no process on port
-    }
+    await killProcessOnPort(PREFERRED_PORT);
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Install dependencies if node_modules doesn't exist
     try {
       await access(path.join(repoPath, "node_modules"));
     } catch {
-      await execFileAsync("npm", ["install"], { cwd: repoPath, timeout: 300000 });
+      await execFileAsync(getPlatformCommand("npm"), ["install"], { cwd: repoPath, timeout: 300000 });
     }
 
     // Find an available port (prefer 3001)
@@ -146,16 +189,9 @@ export async function POST(request: NextRequest) {
 
     // Start dev server with log capture
     // Use a clean environment to avoid inheriting Turbopack settings from ceo-vibe-console (Next.js 16)
-    const cleanEnv: NodeJS.ProcessEnv = {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-      USER: process.env.USER,
-      SHELL: process.env.SHELL,
-      NODE_ENV: "development",
-      // Pass through necessary env vars but NOT Next.js internal ones
-    };
+    const cleanEnv = getCleanDevEnv();
 
-    devServerProcess = spawn("npx", ["next", "dev", "-p", String(port)], {
+    devServerProcess = spawn(getPlatformCommand("npx"), ["next", "dev", "-p", String(port)], {
       cwd: repoPath,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,

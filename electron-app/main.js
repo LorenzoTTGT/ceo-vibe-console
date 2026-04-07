@@ -82,11 +82,11 @@ const isDev = !app.isPackaged;
 let mainWindow = null;
 let serverProcess = null;
 
-function getResourcePath(...segments) {
+function getAppRoot(...segments) {
   if (isDev) {
     return path.join(__dirname, "..", ...segments);
   }
-  return path.join(process.resourcesPath, ...segments);
+  return path.join(app.getAppPath(), ...segments);
 }
 
 // Find which port Next.js actually started on by checking a marker file
@@ -133,7 +133,7 @@ async function startNextServer() {
   }
 
   // Production: require the standalone server.js in-process
-  const serverPath = getResourcePath(".next", "standalone", "server.js");
+  const serverPath = getAppRoot("server.js");
   process.env.PORT = String(PORT);
   process.env.HOSTNAME = "localhost";
   require(serverPath);
@@ -208,6 +208,8 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  loadUserEnv();
+
   // Set data paths for the app
   const userData = app.getPath("userData");
   process.env.DATA_DIR = process.env.DATA_DIR || userData;

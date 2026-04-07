@@ -3,7 +3,7 @@ import { auth, getCurrentUser } from "@/lib/auth";
 import { getOrCreateRepo } from "@/db/helpers";
 import { access, mkdir } from "fs/promises";
 import path from "path";
-import { validateRepoName, getSafeRepoPath, execFileAsync, safeGit } from "@/lib/validation";
+import { validateRepoName, getSafeRepoPath, execFileAsync, getPlatformCommand, safeGit } from "@/lib/validation";
 
 const WORKSPACE_PATH = process.env.SANDBOX_WORKSPACE_PATH || "./data/workspace";
 
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          await execFileAsync(installCmd, ["install"], {
+          await execFileAsync(getPlatformCommand(installCmd), ["install"], {
             cwd: repoPath,
             timeout: 300000, // 5 minutes for install
           });

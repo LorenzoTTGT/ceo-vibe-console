@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { writeFile, readFile, unlink } from "fs/promises";
 import { homedir, tmpdir } from "os";
 import path from "path";
+import { getPlatformCommand } from "@/lib/validation";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,7 +17,12 @@ async function killExistingAuthProcess() {
     const pid = await readFile(AUTH_PID_FILE, "utf-8");
     if (pid) {
       try {
-        process.kill(parseInt(pid.trim(), 10), "SIGTERM");
+        const parsedPid = parseInt(pid.trim(), 10);
+        if (process.platform === "win32") {
+          await execFileAsync("taskkill", ["/PID", String(parsedPid), "/T", "/F"], { timeout: 10000 }).catch(() => {});
+        } else {
+          process.kill(parsedPid, "SIGTERM");
+        }
       } catch {
         // Process already dead
       }
@@ -45,14 +51,17 @@ export async function POST() {
       let stderr = "";
       let resolved = false;
 
+      const codexCommand = getPlatformCommand("codex");
+
       // Start codex in detached mode so it survives if the API handler exits
-      const proc = spawn("codex", ["login", "--device-auth"], {
+      const proc = spawn(codexCommand, ["login", "--device-auth"], {
         stdio: ["ignore", "pipe", "pipe"],
         detached: true, // Run in separate process group (critical for survival)
         env: {
           ...process.env,
           // Ensure HOME is set for codex to find/write config
           HOME: homedir(),
+          USERPROFILE: process.env.USERPROFILE || homedir(),
         },
       });
 
@@ -156,7 +165,7 @@ export async function DELETE() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    await execFileAsync("codex", ["logout"], { timeout: 10000 });
+    await execFileAsync(getPlatformCommand("codex"), ["logout"], { timeout: 10000 });
 
     return NextResponse.json({ success: true });
   } catch (error) {

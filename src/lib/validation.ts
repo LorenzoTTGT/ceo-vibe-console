@@ -47,6 +47,28 @@ export function validateModel(model: string): boolean {
   return ALLOWED_MODELS.includes(model);
 }
 
+const WINDOWS_CMD_SHIMS = new Set(["codex", "npm", "npx", "pnpm", "yarn"]);
+
+export function getPlatformCommand(command: string): string {
+  if (process.platform === "win32" && WINDOWS_CMD_SHIMS.has(command)) {
+    return `${command}.cmd`;
+  }
+  if (process.platform === "win32" && command === "powershell") {
+    return "powershell.exe";
+  }
+  return command;
+}
+
+export async function commandExists(command: string): Promise<boolean> {
+  const lookupCommand = process.platform === "win32" ? "where" : "which";
+  try {
+    await execFileAsync(lookupCommand, [command], { timeout: 10000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Validates name + prevents path traversal, returns absolute path */
 export function getSafeRepoPath(repoName: string): string | null {
   if (!validateRepoName(repoName)) return null;

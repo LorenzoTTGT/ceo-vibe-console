@@ -20,12 +20,14 @@ mac:
   gatekeeperAssess: false
 
 win:
-  icon: build/icon.png
+  icon: build/icon.ico
+  executableName: Vibe Console
+  signtoolOptions:
+    publisherName: Guiido
   target:
     - nsis
   # For unsigned builds, Windows will show SmartScreen warning
   # User clicks "More info" > "Run anyway"
-  publisherName: Guiido
 
 nsis:
   oneClick: false
@@ -38,13 +40,29 @@ linux:
     - deb
 
 files:
-  - electron-app/**/*
-  - package.json
-  - "!src"
-  - "!.next"
-  - "!public"
-  - "!**/*.ts"
-  - "!**/*.tsx"
-  - "!**/*.map"
+  - from: .next/standalone
+    to: .
+    filter:
+      - "**/*"
+      - "!dist{,/**}"
+      - "!.git{,/**}"
+      - "!src{,/**}"
+      - "!docs{,/**}"
+      - "!build{,/**}"
+      - "!Dockerfile"
+      - "!Dockerfile.sandbox"
+      - "!docker-compose.yml"
+      - "!README.md"
+      - "!CLAUDE.md"
+      - "!eslint.config.mjs"
+      - "!next.config.ts"
+      - "!postcss.config.mjs"
+      - "!tsconfig.json"
+      - "!package-lock.json"
+      - "!get-codex-auth.bat"
+  - from: .next/static
+    to: .next/static
+    filter:
+      - "**/*"
 
 asar: true
